@@ -35,7 +35,7 @@
     "@types/react-dom": "19.2.3",
     "@vitejs/plugin-react": "6.0.2",
     "eslint": "10.4.0",
-    "globals": "17.6.0",
+    "globals": "17.7.0",
     "prettier": "3.8.3",
     "sharp": "^0.35.2",
     "typescript": "6.0.3",
