@@ -1,6 +1,6 @@
 import { Scene } from 'phaser';
 import type { InitResponse } from '../../shared/api';
-import { processTexture } from '../skins';
+import { processTexture, trimTexture } from '../skins';
 
 export class Preloader extends Scene {
   private initPromise: Promise<InitResponse | null> | null = null;
@@ -39,7 +39,6 @@ export class Preloader extends Scene {
     this.load.image('fox_raw_2', 'fox3.png');
     this.load.image('fox_raw_3', 'fox4.png');
     this.load.image('fox_raw_4', 'fox5.png');
-    this.load.image('gardener', 'gardener_transparent.png');
     this.load.image('gard_raw_1', 'mia.png');
     this.load.image('gard_raw_2', 'sam.png');
     this.load.image('gard_raw_3', 'trump_gardener.png');
@@ -63,6 +62,9 @@ export class Preloader extends Scene {
     processTexture(this, 'corn', 'corn');
     processTexture(this, 'pumpkin', 'pumpkin');
 
+    // Fox skin 0 (fox1.png): crop transparent padding at native res so it fills the cell, no quality loss
+    trimTexture(this, 'fox');
+
     // Load snoovatar (or default snoo) as gard_0 for the username gardener skin
     if (!this.textures.exists('gard_0')) {
       const snooUrl = data?.snoovatarUrl ?? '/snoo.png';
@@ -73,9 +75,15 @@ export class Preloader extends Scene {
         this.load.start();
       });
     }
+    // Snoovatar: crop transparent padding at native res so the avatar fills the cell, no quality loss
+    trimTexture(this, 'gard_0');
 
     if (intent === 'create') {
-      this.scene.start('Editor', { username: data?.username ?? '' });
+      this.scene.start('Editor', {
+        username: data?.username ?? '',
+        unlockedGardener: data?.unlockedGardener,
+        unlockedFox: data?.unlockedFox,
+      });
       return;
     }
 

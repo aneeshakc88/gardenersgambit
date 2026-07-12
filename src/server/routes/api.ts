@@ -11,6 +11,7 @@ import type {
   LeaderboardEntry,
   LeaderboardResponse,
 } from '../../shared/api';
+import { GARDENER_UNLOCKS, FOX_UNLOCKS, unlockedIndices } from '../../shared/api';
 
 type ErrorResponse = {
   status: 'error';
@@ -76,17 +77,24 @@ api.get('/init', async (c) => {
     const username = usernameRaw ?? 'anonymous';
 
     const lbKey = `leaderboard:${postId}`;
-    const [allLbEntries, authorSnooUrl, streakRaw, globalStanding] = await Promise.all([
+    const [allLbEntries, authorSnooUrl, streakRaw, globalStanding, completionsRaw, publishedRaw] = await Promise.all([
       redis.zRange(lbKey, 0, -1, { by: 'rank' }),
       customMeta?.author ? reddit.getSnoovatarUrl(customMeta.author).catch(() => undefined) : Promise.resolve(undefined),
       redis.get(`streak:${username}`),
       standingOf(GLOBAL_LB, username),
+      redis.get(`completions:${username}`),
+      redis.get(`published:${username}`),
     ]);
     const lbTotal = allLbEntries.length;
     const userLbIdx = allLbEntries.findIndex(e => e.member === username);
     const userRank = userLbIdx >= 0 ? lbTotal - userLbIdx : undefined;
     const userLbScore = userLbIdx >= 0 ? allLbEntries[userLbIdx]!.score : undefined;
     const streak = streakRaw ? (JSON.parse(streakRaw) as { count: number }).count : undefined;
+    const unlockStats = {
+      completions: completionsRaw ? parseInt(completionsRaw) : 0,
+      streak: streak ?? 0,
+      published: publishedRaw ? parseInt(publishedRaw) : 0,
+    };
 
     return c.json<InitResponse>({
       type: 'init',
@@ -102,6 +110,8 @@ api.get('/init', async (c) => {
       globalRank: globalStanding.rank,
       globalScore: globalStanding.score,
       globalTotalPlayers: globalStanding.total > 0 ? globalStanding.total : undefined,
+      unlockedGardener: unlockedIndices(GARDENER_UNLOCKS, unlockStats),
+      unlockedFox: unlockedIndices(FOX_UNLOCKS, unlockStats),
       customMap: customMeta
         ? {
             title: customMeta.title,
@@ -176,6 +186,7 @@ api.post('/publishMap', async (c) => {
 
     const post = await createPost(`${mapTitle} by u/${author}`, true);
     const postUrl = `https://www.reddit.com${post.permalink}`;
+    await redis.incrBy(`published:${author}`, 1);
 
     await redis.set(`customMap:${post.id}`, JSON.stringify({
       title: body.title,

@@ -12,6 +12,8 @@ export type InitResponse = {
   globalRank?: number;
   globalScore?: number;
   globalTotalPlayers?: number;
+  unlockedGardener?: number[];
+  unlockedFox?: number[];
   customMap?: {
     title: string;
     author: string;
@@ -75,3 +77,32 @@ export type LeaderboardResponse = {
   scope: "puzzle" | "global";
   entries: LeaderboardEntry[];
 };
+
+// ── Skin unlocks ────────────────────────────────────────────────────────────
+// Index 0 of each skin list is always free (null). Others unlock on a milestone.
+export type SkinUnlock = { metric: "completions" | "streak" | "published"; value: number; label: string };
+export type UnlockStats = { completions: number; streak: number; published: number };
+
+export const GARDENER_UNLOCKS: (SkinUnlock | null)[] = [
+  null,
+  { metric: "completions", value: 3, label: "Solve 3 puzzles" },
+  { metric: "completions", value: 10, label: "Solve 10 puzzles" },
+  { metric: "streak", value: 7, label: "Reach a 7-day streak" },
+  { metric: "published", value: 3, label: "Publish 3 levels" },
+];
+
+export const FOX_UNLOCKS: (SkinUnlock | null)[] = [
+  null,
+  { metric: "completions", value: 5, label: "Solve 5 puzzles" },
+  { metric: "completions", value: 20, label: "Solve 20 puzzles" },
+  { metric: "streak", value: 14, label: "Reach a 14-day streak" },
+  { metric: "published", value: 5, label: "Publish 5 levels" },
+];
+
+export function unlockedIndices(unlocks: (SkinUnlock | null)[], stats: UnlockStats): number[] {
+  const out: number[] = [];
+  unlocks.forEach((u, i) => {
+    if (u === null || stats[u.metric] >= u.value) out.push(i);
+  });
+  return out;
+}
