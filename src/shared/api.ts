@@ -8,6 +8,10 @@ export type InitResponse = {
   userRank?: number;
   userScore?: number;
   totalPlayers?: number;
+  streak?: number;
+  globalRank?: number;
+  globalScore?: number;
+  globalTotalPlayers?: number;
   customMap?: {
     title: string;
     author: string;
@@ -45,7 +49,7 @@ export type PublishMapResponse = {
   author: string;
 };
 
-export type ScoreBucket = { min: number; count: number };
+export type ScoreBucket = { min: number; count: number; overflow?: boolean };
 
 export type SubmitScoreResponse = {
   type: "submitScore";
@@ -54,6 +58,9 @@ export type SubmitScoreResponse = {
   rank: number;
   total: number;
   buckets: ScoreBucket[];
+  streak?: number;
+  globalRank?: number;
+  globalScore?: number;
 };
 
 export type LeaderboardEntry = {
@@ -65,5 +72,6 @@ export type LeaderboardEntry = {
 
 export type LeaderboardResponse = {
   type: "leaderboard";
+  scope: "puzzle" | "global";
   entries: LeaderboardEntry[];
 };

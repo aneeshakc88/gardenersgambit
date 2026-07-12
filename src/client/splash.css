@@ -163,6 +163,7 @@ html, body, #root {
     transform: scale(1.08);
   }
 }
+.lb-btn-custom { right: 66px; } /* clear right sprite column (58px) on custom maps */
 .lb-btn:hover {
   background-color: rgba(255,215,0,0.32);
   box-shadow: 0 0 16px rgba(255,215,0,1), 0 0 32px rgba(255,215,0,0.5);
@@ -555,4 +556,42 @@ html, body, #root {
   animation-timing-function: linear;
   animation-iteration-count: infinite;
   will-change: transform;
+}
+
+.lb-tabs {
+  display: flex;
+  gap: 6px;
+  padding: 10px 16px 0;
+  flex-shrink: 0;
+}
+
+.lb-tab {
+  flex: 1;
+  padding: 7px 0;
+  background: #1a3a22;
+  border: 1px solid rgba(127,224,159,0.15);
+  border-radius: 8px;
+  color: #a0d0b0;
+  font-size: 0.85em;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.lb-tab.active {
+  background: #163320;
+  border-color: #7fe09f;
+  color: #7fe09f;
+}
+
+.streak-badge {
+  margin-left: auto;
+  align-self: center;
+  padding: 3px 9px;
+  background: rgba(255, 140, 0, 0.18);
+  border: 1px solid rgba(255, 140, 0, 0.5);
+  border-radius: 999px;
+  color: #ffb057;
+  font-size: 0.9em;
+  font-weight: 900;
+  white-space: nowrap;
 }
