@@ -8,7 +8,7 @@
     "rootDir": "../src/client",
     "strictPropertyInitialization": false
   },
-  "include": ["../src/client/**/*"],
+  "include": ["../src/client/**/*", "../src/client/**/*.json", "../src/client/**/*.tsx"],
   "exclude": [],
   "references": [
     {

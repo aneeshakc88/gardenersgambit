@@ -8,6 +8,7 @@ export type InitResponse = {
   userRank?: number;
   userScore?: number;
   totalPlayers?: number;
+  topPlayer?: { username: string; score: number; snoovatarUrl?: string };
   streak?: number;
   globalRank?: number;
   globalScore?: number;
@@ -87,16 +88,12 @@ export const GARDENER_UNLOCKS: (SkinUnlock | null)[] = [
   null,
   { metric: "completions", value: 3, label: "Solve 3 puzzles" },
   { metric: "completions", value: 10, label: "Solve 10 puzzles" },
-  { metric: "streak", value: 7, label: "Reach a 7-day streak" },
-  { metric: "published", value: 3, label: "Publish 3 levels" },
 ];
 
 export const FOX_UNLOCKS: (SkinUnlock | null)[] = [
   null,
   { metric: "completions", value: 5, label: "Solve 5 puzzles" },
   { metric: "completions", value: 20, label: "Solve 20 puzzles" },
-  { metric: "streak", value: 14, label: "Reach a 14-day streak" },
-  { metric: "published", value: 5, label: "Publish 5 levels" },
 ];
 
 export function unlockedIndices(unlocks: (SkinUnlock | null)[], stats: UnlockStats): number[] {
@@ -105,4 +102,22 @@ export function unlockedIndices(unlocks: (SkinUnlock | null)[], stats: UnlockSta
     if (u === null || stats[u.metric] >= u.value) out.push(i);
   });
   return out;
+}
+
+// ── Completion tiers (drives user flair) ────────────────────────────────────
+export type Tier = { name: string; icon: string; min: number };
+
+export const TIERS: Tier[] = [
+  { name: "Novice", icon: "🪿", min: 0 },
+  { name: "Bronze", icon: "🥉", min: 5 },
+  { name: "Silver", icon: "🥈", min: 15 },
+  { name: "Gold", icon: "🥇", min: 30 },
+  { name: "Diamond", icon: "💎", min: 50 },
+  { name: "Legend", icon: "👑", min: 100 },
+];
+
+export function tierFor(completions: number): Tier {
+  let tier = TIERS[0]!;
+  for (const t of TIERS) if (completions >= t.min) tier = t;
+  return tier;
 }

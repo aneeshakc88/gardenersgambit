@@ -4,7 +4,10 @@ import { foxKey, makeSkinTextures, fitSize } from '../skins';
 import type { SubmitScoreResponse } from '../../shared/api';
 
 // 0=fence 1=soil 2=hedge(grass, pushable) 3=gardener 4=fox 5=pumpkin 6=corn
-// Grid: 23×23 — fence ring, 3-thick soil ring (fox zone), 15×15 grass centre, gardener mid.
+// Grid: fence(0) is a thin drawn border, not a real cell → playfield = inner (N-2)².
+//   "Playable" size = array−2. Arrays shipped: 18×18 (16² play, 10² centre), 19×19 (17²
+//   play, 11² centre), 23×23 (21² play, 15² centre). 3-thick soil ring (fox zone), block
+//   centre, gardener mid. Dims read dynamically (nr/nc), not hardcoded.
 // Maps live in src/client/levels.json (shared with tools/solve.mjs solvability checker).
 const MAPS = levels.maps as number[][][];
 const FOX_SPEEDS = levels.foxSpeeds as number[];
@@ -53,6 +56,7 @@ export class Game extends Scene {
   private hudTexts: Phaser.GameObjects.GameObject[] = [];
   private overlayG: Phaser.GameObjects.Graphics | null = null;
   private overlayItems: Phaser.GameObjects.GameObject[] = [];
+  private countdownEvent: Phaser.Time.TimerEvent | undefined;
   private cursors!: Phaser.Types.Input.Keyboard.CursorKeys;
   private touchLast: { x: number; y: number } | null = null;
   private nr = 0;
@@ -221,7 +225,12 @@ export class Game extends Scene {
     const S = this.S;
     const gKey = `gard_${this.gardenerSkin}`;
     const fKey = foxKey(this.foxSkin);
-    const gsz = fitSize(this, gKey, S * 1.28); // match fox sizing so gardener fills the cell too
+    // Skin 0's snoovatar carries transparent padding (cross-origin blocks auto-cropping it), so give it
+    // a slightly bigger box than the pixel-art skins to fill the cell without overflowing it.
+    const gbox = this.gardenerSkin === 0 ? S * 1.3 : S * 1.28;
+    const gsz = fitSize(this, gKey, gbox);
+    // gard_0 (the real snoovatar) carries a LINEAR filter (set in Preloader) so the Canvas renderer
+    // smooth-scales it despite the global pixelArt setting; other skins stay crisp pixel-art.
     this.gardenerSprite = this.add.image(this.cx(this.gardener.c), this.cy(this.gardener.r), gKey)
       .setDisplaySize(gsz.w, gsz.h).setDepth(1);
 
@@ -550,6 +559,7 @@ export class Game extends Scene {
     this.overlayG?.destroy(); this.overlayG = null;
     this.overlayItems.forEach(i => (i as Phaser.GameObjects.GameObject & { destroy(): void }).destroy());
     this.overlayItems = [];
+    this.countdownEvent?.remove(); this.countdownEvent = undefined;
   }
 
   private overlay(alpha = 0.78) {
@@ -616,7 +626,7 @@ export class Game extends Scene {
       // Nominal (k=1) vertical spread of the whole block; shrink+recenter to fit short viewports.
       // Order: title → score → distribution chart → comment input → comment button → try again.
       const GAP_TOP = 16, GAP_TITLE = 40, GAP_SCORE = 26;
-      const CHART_H = 40, CHART_FOOT = 44, GAP_INPUT = 40, GAP_CBTN = 60, GAP_TRY = 48, GAP_BOTTOM = 16;
+      const CHART_H = 40, CHART_FOOT = 68, GAP_INPUT = 40, GAP_CBTN = 60, GAP_TRY = 48, GAP_BOTTOM = 16;
       const NOMINAL_H = GAP_TOP + GAP_TITLE + GAP_SCORE + CHART_H + CHART_FOOT + GAP_INPUT + GAP_CBTN + GAP_TRY + GAP_BOTTOM;
       const k = Math.max(0.55, Math.min(1, (this.H - 24) / NOMINAL_H));
       let y = Math.max(14, (this.H - NOMINAL_H * k) / 2);
@@ -647,15 +657,14 @@ export class Game extends Scene {
           if (d.streak !== undefined && d.streak > 0) bits.push(`🔥 ${d.streak}-day streak`);
           if (d.globalRank !== undefined) bits.push(`🌍 Global Rank ${d.globalRank}`);
           if (bits.length) {
-            this.oText(cx, chartTopY + chartH + CHART_FOOT * k * 0.5, bits.join('   '),
-              { fontSize: fsz(S * 0.26 * k), color: '#7fe09f' });
-            autoMsg += ` (${bits.join(', ')})`;
+            this.oText(cx, chartTopY + chartH + CHART_FOOT * k * 0.82, bits.join('    '),
+              { fontFamily: 'Arial Black', fontSize: fsz(S * 0.3 * k), color: '#9fffc0', stroke: '#0d2b1a', strokeThickness: Math.max(2, 3 * k) });
           }
         })
         .catch(() => { if (loadingT.active) loadingT.setVisible(false); });
 
       y = chartTopY + chartH + CHART_FOOT * k + GAP_INPUT * k;
-      let autoMsg = this.level === 0
+      const autoMsg = this.level === 0
         ? `I scored ${score} pts on Level 1 of today's Gardener's Gambit! 🌱`
         : `I reached Level ${this.level + 1} and scored ${score} pts on today's Gardener's Gambit! 🌱`;
       const inputW = Math.min(boardW - 36, Math.max(190, boardW * 0.6));
@@ -710,7 +719,7 @@ export class Game extends Scene {
 
     } else {
       const GAP_TOP = 16, GAP_TITLE = 40, GAP_SCORE = 26;
-      const CHART_H = 40, CHART_FOOT = 44, GAP_INPUT = 40, GAP_CBTN = 60, GAP_TRY = 48, GAP_BOTTOM = 16;
+      const CHART_H = 40, CHART_FOOT = 68, GAP_INPUT = 40, GAP_CBTN = 60, GAP_TRY = 48, GAP_BOTTOM = 16;
       const NOMINAL_H = GAP_TOP + GAP_TITLE + GAP_SCORE + CHART_H + CHART_FOOT + GAP_INPUT + GAP_CBTN + GAP_TRY + GAP_BOTTOM;
       const k = Math.max(0.55, Math.min(1, (this.H - 24) / NOMINAL_H));
       let y = Math.max(14, (this.H - NOMINAL_H * k) / 2);
@@ -741,15 +750,14 @@ export class Game extends Scene {
           if (d.streak !== undefined && d.streak > 0) bits.push(`🔥 ${d.streak}-day streak`);
           if (d.globalRank !== undefined) bits.push(`🌍 Global Rank ${d.globalRank}`);
           if (bits.length) {
-            this.oText(cx, chartTopY + chartH + CHART_FOOT * k * 0.5, bits.join('   '),
-              { fontSize: fsz(S * 0.26 * k), color: '#7fe09f' });
-            autoMsg += ` (${bits.join(', ')})`;
+            this.oText(cx, chartTopY + chartH + CHART_FOOT * k * 0.82, bits.join('    '),
+              { fontFamily: 'Arial Black', fontSize: fsz(S * 0.3 * k), color: '#9fffc0', stroke: '#0d2b1a', strokeThickness: Math.max(2, 3 * k) });
           }
         })
         .catch(() => { if (loadingT.active) loadingT.setVisible(false); });
 
       y = chartTopY + chartH + CHART_FOOT * k + GAP_INPUT * k;
-      let autoMsg = this.level === 0
+      const autoMsg = this.level === 0
         ? `I scored ${score} pts on Level 1 of this Gardener's Gambit! 🌱`
         : `I reached Level ${this.level + 1} and scored ${score} pts on this Gardener's Gambit! 🌱`;
       const inputW = Math.min(boardW - 36, Math.max(190, boardW * 0.6));
@@ -793,10 +801,14 @@ export class Game extends Scene {
     const fsz = (n: number) => `${Math.max(9, Math.floor(n))}px`;
     const score = this.score;
     const elapsed = this.elapsed;
+    const daily = !this.isCustom; // daily mode gets the streak line + next-puzzle countdown
 
     const GAP_TOP = 16, GAP_TITLE = 50, GAP_SUB = 26, GAP_SCORE = 24, GAP_TIME = 30;
-    const BADGE_H = 94, GAP_BADGE = 30, GAP_BTN = 50, GAP_BOTTOM = 20;
-    const NOMINAL_H = GAP_TOP + GAP_TITLE + GAP_SUB + GAP_SCORE + GAP_TIME + BADGE_H + GAP_BADGE + GAP_BTN + GAP_BOTTOM;
+    const GAP_STREAK = daily ? 30 : 0;
+    const BADGE_H = 94, GAP_BADGE = 30;
+    const GAP_COUNT = daily ? 28 : 0;
+    const GAP_BTN = 50, GAP_BOTTOM = 20;
+    const NOMINAL_H = GAP_TOP + GAP_TITLE + GAP_SUB + GAP_SCORE + GAP_TIME + GAP_STREAK + BADGE_H + GAP_BADGE + GAP_COUNT + GAP_BTN + GAP_BOTTOM;
     const k = Math.max(0.55, Math.min(1, (this.H - 24) / NOMINAL_H));
     let y = Math.max(14, (this.H - NOMINAL_H * k) / 2);
 
@@ -814,6 +826,14 @@ export class Game extends Scene {
       { fontSize: fsz(S * 0.30 * k), color: '#AAAAFF' });
     y += GAP_TIME * k;
 
+    // Streak: value arrives with the submitScore response below; reserve the slot now, fill it in then.
+    let streakText: Phaser.GameObjects.Text | undefined;
+    if (daily) {
+      streakText = this.oText(cx, y, '',
+        { fontFamily: 'Arial Black', fontSize: fsz(S * 0.42 * k), color: '#FF9D3A', stroke: '#3a1a00', strokeThickness: Math.max(1, 3 * k) });
+      y += GAP_STREAK * k;
+    }
+
     const badgeY = y;
     const loadingT = this.oText(cx, badgeY + 20 * k, 'Loading…',
       { fontSize: fsz(S * 0.24 * k), color: '#446644' });
@@ -821,10 +841,27 @@ export class Game extends Scene {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ score }),
     }).then(r => r.json() as Promise<SubmitScoreResponse>)
-      .then(d => { if (this.status !== 'win') return; loadingT.setVisible(false); this.drawRankBadge(d, cx, badgeY, k); })
+      .then(d => {
+        if (this.status !== 'win') return;
+        loadingT.setVisible(false);
+        this.drawRankBadge(d, cx, badgeY, k);
+        if (streakText && d.streak) streakText.setText(`🔥 ${d.streak}-day streak`);
+      })
       .catch(() => { if (loadingT.active) loadingT.setVisible(false); });
 
     y += BADGE_H * k + GAP_BADGE * k;
+
+    // Countdown to the next daily puzzle (cron drops it at 13:00 UTC) — live "come back" hook.
+    if (daily) {
+      const cd = this.oText(cx, y, `⏳ Next puzzle in ${this.fmtCountdown(this.msToNextDaily())}`,
+        { fontSize: fsz(S * 0.30 * k), color: '#9fd4b0', stroke: '#0d2b1a', strokeThickness: Math.max(1, 2 * k) });
+      this.countdownEvent = this.time.addEvent({
+        delay: 1000, loop: true,
+        callback: () => { if (cd.active) cd.setText(`⏳ Next puzzle in ${this.fmtCountdown(this.msToNextDaily())}`); },
+      });
+      y += GAP_COUNT * k;
+    }
+
     const postBtn = this.oBtn(cx, y, 'Post Score to Reddit', '#FF8800', '#1A1A30', () => {
       postBtn.setText('Posting...');
       fetch('/api/postScore', {
@@ -893,20 +930,20 @@ export class Game extends Scene {
       }
       // Boundary tick at each bar's left edge
       this.oText(bx, barBottom + 9 * k, fmtK(b.min),
-        { fontSize: fsz(9.5 * k), color: '#9fd4b0' });
+        { fontSize: fsz(9.5 * k), color: '#9fd4b0', stroke: '#0d2b1a', strokeThickness: Math.max(1, 2 * k) });
       if (isYours) {
-        this.oText(bx + bw / 2, barBottom + 18 * k, 'You',
-          { fontFamily: 'Arial Black', fontSize: fsz(8 * k), color: '#FFD700' });
+        this.oText(bx + bw / 2, barBottom + 20 * k, 'You',
+          { fontFamily: 'Arial Black', fontSize: fsz(9 * k), color: '#FFD700', stroke: '#0d2b1a', strokeThickness: Math.max(1, 2 * k) });
       }
     }
     // Final upper-bound tick at right edge
     const last = buckets[n - 1]!;
     this.oText(x0 + groupW, barBottom + 9 * k, last.overflow ? `${fmtK(last.min)}+` : fmtK(last.min + BUCKET),
-      { fontSize: fsz(9.5 * k), color: '#9fd4b0' });
+      { fontSize: fsz(9.5 * k), color: '#9fd4b0', stroke: '#0d2b1a', strokeThickness: Math.max(1, 2 * k) });
 
     if (total > 1) {
-      this.oText(cx, barBottom + 32 * k, `Better than ${Math.round(((total - rank) / (total - 1)) * 100)}% of players`,
-        { fontSize: fsz(this.S * 0.26 * k), color: '#AAFFAA' });
+      this.oText(cx, barBottom + 36 * k, `Better than ${Math.round(((total - rank) / (total - 1)) * 100)}% of players`,
+        { fontSize: fsz(this.S * 0.26 * k), color: '#AAFFAA', stroke: '#0d2b1a', strokeThickness: Math.max(1, 2 * k) });
     }
   }
 
@@ -961,6 +998,21 @@ export class Game extends Scene {
     const m = Math.floor(sec / 60).toString().padStart(2, '0');
     const s = Math.floor(sec % 60).toString().padStart(2, '0');
     return `${m}:${s}`;
+  }
+
+  // ms until the next daily puzzle drops (scheduler cron is 13:00 UTC — see devvit.json).
+  private msToNextDaily(): number {
+    const now = Date.now();
+    const next = new Date(now);
+    next.setUTCHours(13, 0, 0, 0);
+    if (next.getTime() <= now) next.setUTCDate(next.getUTCDate() + 1);
+    return next.getTime() - now;
+  }
+
+  private fmtCountdown(ms: number): string {
+    const s = Math.max(0, Math.floor(ms / 1000));
+    const h = Math.floor(s / 3600), m = Math.floor((s % 3600) / 60), ss = s % 60;
+    return `${h}h ${m.toString().padStart(2, '0')}m ${ss.toString().padStart(2, '0')}s`;
   }
 
   // ── MAIN LOOP ─────────────────────────────────────────────────────────────

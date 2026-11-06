@@ -11,7 +11,7 @@ import type {
   LeaderboardEntry,
   LeaderboardResponse,
 } from '../../shared/api';
-import { GARDENER_UNLOCKS, FOX_UNLOCKS, unlockedIndices } from '../../shared/api';
+import { GARDENER_UNLOCKS, FOX_UNLOCKS, unlockedIndices, tierFor } from '../../shared/api';
 
 type ErrorResponse = {
   status: 'error';
@@ -90,6 +90,19 @@ api.get('/init', async (c) => {
     const userRank = userLbIdx >= 0 ? lbTotal - userLbIdx : undefined;
     const userLbScore = userLbIdx >= 0 ? allLbEntries[userLbIdx]!.score : undefined;
     const streak = streakRaw ? (JSON.parse(streakRaw) as { count: number }).count : undefined;
+
+    let topPlayer: InitResponse['topPlayer'];
+    if (customMeta && lbTotal > 0) {
+      const topEntry = allLbEntries[lbTotal - 1]!;
+      const topSnoo =
+        topEntry.member === username
+          ? snoovatarUrl
+          : topEntry.member === customMeta.author
+            ? authorSnooUrl
+            : await reddit.getSnoovatarUrl(topEntry.member).catch(() => undefined);
+      topPlayer = { username: topEntry.member, score: topEntry.score, snoovatarUrl: topSnoo ?? undefined };
+    }
+
     const unlockStats = {
       completions: completionsRaw ? parseInt(completionsRaw) : 0,
       streak: streak ?? 0,
@@ -106,6 +119,7 @@ api.get('/init', async (c) => {
       userRank,
       userScore: userLbScore,
       totalPlayers: lbTotal > 0 ? lbTotal : undefined,
+      topPlayer,
       streak,
       globalRank: globalStanding.rank,
       globalScore: globalStanding.score,
@@ -255,10 +269,11 @@ api.post('/submitScore', async (c) => {
 
     const existing = await redis.zScore(lbKey, username);
     let streak: number | undefined;
+    let completions: number;
     if (existing === undefined) {
       // First solve of this post: record local score, then credit global points once.
       await redis.zAdd(lbKey, { member: username, score: body.score });
-      await redis.incrBy(`completions:${username}`, 1);
+      completions = await redis.incrBy(`completions:${username}`, 1);
 
       const [puzzleNumberRaw, customMapRaw] = await Promise.all([
         redis.get(`puzzleNumber:${postId}`),
@@ -280,8 +295,12 @@ api.post('/submitScore', async (c) => {
         await redis.set(`streak:${username}`, JSON.stringify({ count, lastPuzzle: num }));
       }
     } else {
-      const raw = await redis.get(`streak:${username}`);
+      const [raw, completionsRaw] = await Promise.all([
+        redis.get(`streak:${username}`),
+        redis.get(`completions:${username}`),
+      ]);
       streak = raw ? (JSON.parse(raw) as { count: number }).count : undefined;
+      completions = completionsRaw ? parseInt(completionsRaw) : 0;
     }
 
     const recordedScore = existing ?? body.score;
@@ -311,6 +330,17 @@ api.post('/submitScore', async (c) => {
     }
 
     const global = await standingOf(GLOBAL_LB, username);
+
+    // Best-effort flair update; never block score submission on it.
+    const tier = tierFor(completions);
+    reddit.setUserFlair({
+      subredditName: context.subredditName,
+      username,
+      text: `Rank #${global.rank ?? '—'} | ${completions} Completions | ${tier.icon} ${tier.name}`,
+      backgroundColor: '#b7e8b0',
+      textColor: 'dark',
+    }).catch((err) => console.error(`Flair update failed for ${username}:`, err));
+
     return c.json<SubmitScoreResponse>({ type: 'submitScore', submitted: existing === undefined, yourScore: recordedScore, rank, total, buckets, streak, globalRank: global.rank, globalScore: global.score });
   } catch (err) {
     return c.json<ErrorResponse>({ status: 'error', message: String(err) }, 400);

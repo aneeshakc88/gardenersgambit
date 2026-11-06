@@ -211,7 +211,9 @@ export class Editor extends Scene {
           g.fillStyle(ROCK); g.fillRoundedRect(x + 3, y + 3, S - 7, S - 7, Math.max(2, S / 6));
         } else if (code >= 3) {
           const key = code === 3 ? `gard_${this.gardenerSkin}` : code === 4 ? this.foxKey(this.foxSkin) : code === 5 ? 'pumpkin' : 'corn';
-          const sz = (code === 4 || code === 3) ? fitSize(this, key, S * 1.28) : { w: S * 0.92, h: S * 0.92 };
+          // Snoovatar (skin 0) has transparent padding, so give it a slightly bigger box to fill the cell.
+          const box = code === 3 && this.gardenerSkin === 0 ? S * 1.3 : S * 1.28;
+          const sz = (code === 4 || code === 3) ? fitSize(this, key, box) : { w: S * 0.92, h: S * 0.92 };
           this.entities.push(this.add.image(x + S / 2, y + S / 2, key).setDisplaySize(sz.w, sz.h).setDepth(1));
         }
       }

@@ -1,82 +1,89 @@
 import './splash.css';
-import { StrictMode, useEffect, useMemo, useState, type MouseEvent as ReactMouseEvent } from 'react';
+import { StrictMode, useEffect, useState, type CSSProperties, type MouseEvent as ReactMouseEvent } from 'react';
 import { createRoot } from 'react-dom/client';
 import { requestExpandedMode } from '@devvit/web/client';
 import type { InitResponse, LeaderboardEntry, LeaderboardResponse } from '../shared/api';
 
 
-const SG_SRCS = [
-  '/assets/fox1.png', '/assets/fox2.png', '/assets/fox3.png',
-  '/assets/fox4.png', '/assets/fox5.png',
-  '/assets/corn.png', '/assets/pumpkin.png',
-  '/assets/mia.png',  '/assets/sam.png',
-  '/assets/putin_gardener.png', '/assets/trump_gardener.png',
+const FIREFLY_SPECS = [
+  { top: 30, left: 20, dx: 60,  dy: -40, delay: 0 },
+  { top: 60, left: 75, dx: -50, dy: -30, delay: 1.5 },
+  { top: 22, left: 70, dx: -40, dy: 50,  delay: 3 },
+  { top: 75, left: 30, dx: 45,  dy: -55, delay: 4.5 },
+  { top: 45, left: 50, dx: 30,  dy: 40,  delay: 2.2 },
 ];
 
-function sgAnim(src: string): string {
-  if (src.includes('fox')) return 'sg-wander';
-  if (src.includes('corn') || src.includes('pumpkin')) return 'sg-float';
-  return 'sg-sway';
-}
+const LEAF_SPECS = [
+  { left: 8,  size: 16, duration: 13, delay: -2,  drift: 30,  spin: 340 },
+  { left: 28, size: 12, duration: 16, delay: -8,  drift: -24, spin: -280 },
+  { left: 50, size: 18, duration: 15, delay: -5,  drift: 22,  spin: 300 },
+  { left: 68, size: 13, duration: 18, delay: -11, drift: -30, spin: -320 },
+  { left: 86, size: 15, duration: 14, delay: -3,  drift: 26,  spin: 260 },
+];
 
-const SplashSprites = () => {
-  const sprites = useMemo(() => {
-    // Rejection-sample positions so no two sprites overlap. Min centre gap in %-space
-    // (x and y map to different px, but a generous gap keeps sprites clear even when foxes drift).
-    const GAP = 11;
-    const placed: { x: number; y: number }[] = [];
-    const out: { id: number; src: string; x: number; y: number; size: number; opacity: number; duration: number; delay: number; anim: string }[] = [];
-    // Centre box (where buttons/title sit) is capped at 2 sprites; everyone else keeps clear of a
-    // wider halo around it, then spreads over the rest of the board.
-    const CENTER = 2;
-    const inBox = (x: number, y: number) => x >= 25 && x <= 75 && y >= 25 && y <= 75;
-    let attempts = 0;
-    while (out.length < 14 && attempts < 2000) {
-      attempts++;
-      const wantCenter = out.length < CENTER;
-      const x = wantCenter ? 38 + Math.random() * 24 : 5 + Math.random() * 90;
-      const y = wantCenter ? 38 + Math.random() * 24 : 7 + Math.random() * 86;
-      if (!wantCenter && inBox(x, y)) continue;
-      if (placed.some(p => Math.hypot(p.x - x, p.y - y) < GAP)) continue;
-      placed.push({ x, y });
-      const src = SG_SRCS[out.length % SG_SRCS.length]!;
-      out.push({
-        id: out.length, src, x, y,
-        size:     36 + Math.random() * 24,
-        opacity:  0.65 + Math.random() * 0.27,
-        duration: 7 + Math.random() * 7,
-        delay:    -(Math.random() * 14),
-        anim:     sgAnim(src),
-      });
-    }
-    return out;
-  }, []);
-
-  return (
-    <div className="sg-layer" aria-hidden="true">
-      {sprites.map(s => (
-        <img key={s.id} className="sg-sprite" src={s.src} alt=""
-          style={{
-            left: `${s.x}%`, top: `${s.y}%`,
-            width: `${s.size}px`, height: `${s.size}px`,
-            opacity: s.opacity,
-            animationName: s.anim,
-            animationDuration: `${s.duration}s`,
-            animationDelay: `${s.delay}s`,
-          }}
-        />
+const SplashSprites = () => (
+  <>
+    <div className="sunburst" aria-hidden="true" />
+    <div className="glow-ring" aria-hidden="true" />
+    <div className="leaf-layer" aria-hidden="true">
+      {LEAF_SPECS.map((l, i) => (
+        <span key={i} className="leaf" style={{
+          left: `${l.left}%`, width: `${l.size}px`, height: `${l.size}px`,
+          animationDuration: `${l.duration}s`, animationDelay: `${l.delay}s`,
+          '--drift': `${l.drift}px`, '--spin': `${l.spin}deg`,
+        } as CSSProperties} />
       ))}
     </div>
-  );
-};
+    <div className="firefly-layer" aria-hidden="true">
+      {FIREFLY_SPECS.map((f, i) => (
+        <span key={i} className="firefly" style={{
+          top: `${f.top}%`, left: `${f.left}%`,
+          '--dx': `${f.dx}px`, '--dy': `${f.dy}px`,
+          animationDelay: `${f.delay}s`,
+        } as CSSProperties} />
+      ))}
+    </div>
+  </>
+);
+
+// Ambient "self-playing puzzle" on a 6×6 checkerboard (cell 40px, board 240px).
+// Faithful to the game: 2 foxes advance from opposite edges toward the center
+// garden, the lone gardener slides to block each in turn → they stall & retreat.
+const DIORAMA_VEGGIES = [
+  { src: '/assets/pumpkin.png', x: 84,  y: 124, delay: 0 },
+  { src: '/assets/corn.png',    x: 124, y: 84,  delay: 0.6 },
+  { src: '/assets/corn.png',    x: 164, y: 44,  delay: 1.1 },
+  { src: '/assets/pumpkin.png', x: 44,  y: 164, delay: 0.3 },
+];
+
+const BoardDiorama = () => (
+  <div className="diorama-enter">
+    <div className="diorama" aria-hidden="true">
+      <div className="diorama-board">
+        {DIORAMA_VEGGIES.map((v, i) => (
+          <div key={i} className="dio-token dio-veg" style={{ transform: `translate(${v.x}px, ${v.y}px)` }}>
+            <img className="dio-veg-img" src={v.src} alt="" style={{ animationDelay: `${v.delay}s` }} />
+          </div>
+        ))}
+        <div className="dio-token dio-foxA">
+          <img className="dio-hop-img" src="/assets/fox1.png" alt="" />
+        </div>
+        <div className="dio-token dio-foxB">
+          <img className="dio-hop-img" src="/assets/fox2.png" alt="" style={{ animationDelay: '0.3s' }} />
+        </div>
+        <div className="dio-token dio-gard">
+          <img className="dio-hop-img" src="/assets/mia.png" alt="" style={{ animationDelay: '0.45s' }} />
+        </div>
+      </div>
+    </div>
+  </div>
+);
 
 const SCROLL_FOXES = [
-  '/assets/fox1.png', '/assets/fox2.png',
-  '/assets/fox3.png', '/assets/fox4.png',
+  '/assets/fox1.png', '/assets/fox2.png', '/assets/fox3.png',
 ];
 const SCROLL_GARDS = [
-  '/assets/mia.png',            '/assets/sam.png',
-  '/assets/trump_gardener.png', '/assets/putin_gardener.png',
+  '/assets/mia.png', '/assets/sam.png',
 ];
 const SCROLL_DUR = 11;
 const SCROLL_COUNT = 8;
@@ -202,13 +209,61 @@ const Splash = () => {
 
   return (
     <div
-      className="app"
+      className={`app${initData?.customMap ? ' app-custom' : ''}`}
     >
       {initData === null ? null : initData.customMap ? <ScrollColumns /> : <SplashSprites />}
-      <div className="game-title">Gardener's Gambit</div>
-      <div className="tagline">Trap the fox. Save the garden.</div>
-      <button className={`lb-btn${initData?.customMap ? ' lb-btn-custom' : ''}`} title="Leaderboard" aria-label="Leaderboard" onClick={handleLbOpen}>🏆</button>
-      <div className="buttons">
+      {initData !== null && !initData.customMap && <BoardDiorama />}
+      <div className="hero-enter">
+        <div className="game-title">Gardener's Gambit</div>
+        <div className="tagline">Trap the fox. Save the garden.</div>
+        <div className="tagline-rule" aria-hidden="true">
+          <svg viewBox="0 0 84 10">
+            <path d="M0 5 H32" stroke="#e8b23d" strokeWidth="1" opacity="0.6" />
+            <path d="M84 5 H52" stroke="#e8b23d" strokeWidth="1" opacity="0.6" />
+            <path d="M42 1 C46 1 46 4 42 5 C38 6 38 9 42 9 C38 9 36 7 36 5 C36 3 38 1 42 1 Z" fill="#8fe3a8" />
+          </svg>
+        </div>
+      </div>
+      <div className={`lb-btn-enter${initData?.customMap ? ' lb-btn-enter-custom' : ''}`}>
+        <button className="lb-btn" title="Leaderboard" aria-label="Leaderboard" onClick={handleLbOpen}>🏆</button>
+      </div>
+
+      {initData?.customMap && (
+        <div className="vs-card-enter">
+          <div className="vs-card">
+            <div className="vs-side">
+              <div className="vs-avatar-ring vs-ring-you">
+                <img
+                  className="vs-avatar"
+                  src={snooUrl}
+                  alt=""
+                  onError={e => { (e.currentTarget as HTMLImageElement).src = '/snoo.png'; }}
+                />
+              </div>
+              <span className="vs-name vs-name-you">u/{initData.username}</span>
+            </div>
+            <span className="vs-glove vs-glove-left" aria-hidden="true">🥊</span>
+            <div className="vs-mid">
+              <span className="vs-label">VS</span>
+              {initData.topPlayer && <span className="vs-pts">{initData.topPlayer.score} pts</span>}
+            </div>
+            <span className="vs-glove vs-glove-right" aria-hidden="true">🥊</span>
+            <div className="vs-side">
+              <div className="vs-avatar-ring vs-ring-opp">
+                <img
+                  className="vs-avatar"
+                  src={(initData.topPlayer?.snoovatarUrl ?? initData.customMap.authorSnoovatarUrl) ?? '/snoo.png'}
+                  alt=""
+                  onError={e => { (e.currentTarget as HTMLImageElement).src = '/snoo.png'; }}
+                />
+              </div>
+              <span className="vs-name vs-name-opp">u/{initData.topPlayer?.username ?? initData.customMap.author}</span>
+            </div>
+          </div>
+        </div>
+      )}
+
+      <div className="buttons buttons-enter">
         <button className="play-btn" onClick={handlePlay}>
           <span className="snoo-circle">
             {initData !== null && (
@@ -220,12 +275,14 @@ const Splash = () => {
               />
             )}
           </span>
-          Play
-        </button>
-        <button className="create-btn" onClick={handleCreate}>
-          Create Level
+          {initData?.customMap ? 'Accept Challenge' : 'Play'}
         </button>
       </div>
+
+      <button className="build-btn" onClick={handleCreate}>
+        <img className="build-hammer" src="/assets/hammer.webp" alt="" />
+        Build
+      </button>
 
       {initData?.customMap && (
         <div className="splash-card made-by-card">
@@ -245,7 +302,7 @@ const Splash = () => {
         </div>
       )}
 
-      {(initData?.globalRank !== undefined || initData?.userRank !== undefined) && (
+      {!initData?.customMap && initData?.userRank !== undefined && (
         <div className="splash-card rank-card">
           <img
             className="card-avatar"
@@ -254,17 +311,12 @@ const Splash = () => {
             onError={e => { (e.currentTarget as HTMLImageElement).src = '/snoo.png'; }}
           />
           <div className="card-info">
-            <span className="card-label">
-              🏆 {initData.globalRank !== undefined ? `Global Rank ${initData.globalRank}` : `Rank ${initData.userRank}`}
-            </span>
+            <span className="card-label">🏆 Rank {initData.userRank}</span>
             <span className="card-username">u/{initData.username}</span>
-            {initData.globalScore !== undefined && (
-              <span className="card-stat">{initData.globalScore} pts</span>
+            {initData.userScore !== undefined && (
+              <span className="card-stat">{initData.userScore} pts</span>
             )}
           </div>
-          {initData.streak !== undefined && initData.streak > 0 && (
-            <div className="streak-badge">🔥 {initData.streak}</div>
-          )}
         </div>
       )}
 
