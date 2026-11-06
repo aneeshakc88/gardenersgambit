@@ -1,7 +1,8 @@
 import * as Phaser from 'phaser';
 import { Scene } from 'phaser';
 import { navigateTo } from '@devvit/web/client';
-import { GARDENER_SKINS, FOX_SKINS, foxKey, makeSkinTextures } from '../skins';
+import { GARDENER_SKINS, FOX_SKINS, foxKey, makeSkinTextures, fitSize } from '../skins';
+import { GARDENER_UNLOCKS, FOX_UNLOCKS } from '../../shared/api';
 
 // Tile codes: 0 fence, 1 soil, 2 grass, 3 gardener, 4 fox, 5 pumpkin, 6 corn, 7 rock(immovable).
 // Objects (>=3) render on a soil base. Fence is the fixed 1-thick border (not user-editable).
@@ -15,8 +16,8 @@ const GRID_M = 0;    // edge-to-edge: centering handles alignment
 const FENCE_PX = 4;  // thin fence border replaces full fence cells
 const BAR_H = 130;   // portrait bottom bar (3 rows: tools | sizes+actions | test+publish)
 const RAIL_W = 136;  // landscape left rail (2 cols)
-const FENCE = 0x35c7dd, SOIL = 0xcba877, GRASS_BD = 0x163208, GRASS = 0x3c8e2c, GRASS_LF = 0x73c94e, ROCK = 0x8a8d91;
-const DEFAULT_WH = 19, MAX_WH = 31, MIN_GRASS = 9;
+const FENCE = 0x35c7dd, SOIL = 0xcba877, GRASS_BD = 0x63b845, GRASS = 0x3c8e2c, ROCK = 0x8a8d91;
+const MIN_WH = 17, MAX_WH = 31, MIN_GRASS = 9; // W/H field shows soil+grass tile count (total = value+2 incl fence ring); min 15 tiles
 // grass floor 0.50 (not 0.65): daily 3-thick ring is ~51% and editor default ~58%;
 // foxes-outer-ring + reachability carry solvability, so a high density floor isn't needed.
 const GRASS_MIN = 0.50, GRASS_MAX = 0.90, MAX_FOX = 3, MIN_GARD_FOX = 3;
@@ -31,6 +32,8 @@ export class Editor extends Scene {
   private gardenerSkin = 0;
   private foxSkin = 0;
   private username = '';
+  private unlockedGardener: number[] = [0];
+  private unlockedFox: number[] = [0];
   private veggieIdx = 0;
   private variantOpen = false;
   private title = '';
@@ -54,8 +57,10 @@ export class Editor extends Scene {
 
   constructor() { super('Editor'); }
 
-  init(data: { username?: string }) {
+  init(data: { username?: string; unlockedGardener?: number[]; unlockedFox?: number[] }) {
     this.username = data.username ?? '';
+    this.unlockedGardener = data.unlockedGardener ?? [0];
+    this.unlockedFox = data.unlockedFox ?? [0];
   }
 
   create() {
@@ -137,15 +142,15 @@ export class Editor extends Scene {
 
   private setDimTo(which: 'W' | 'H' | 'sR' | 'sC', value: number) {
     this.pushUndo();
-    if (which === 'W') { this.cols = Phaser.Math.Clamp(value, DEFAULT_WH, MAX_WH); this.soilC = Math.min(this.soilC, this.maxSoil(this.cols)); }
-    if (which === 'H') { this.rows = Phaser.Math.Clamp(value, DEFAULT_WH, MAX_WH); this.soilR = Math.min(this.soilR, this.maxSoil(this.rows)); }
+    if (which === 'W') { this.cols = Phaser.Math.Clamp(value + 2, MIN_WH, MAX_WH); this.soilC = Math.min(this.soilC, this.maxSoil(this.cols)); }
+    if (which === 'H') { this.rows = Phaser.Math.Clamp(value + 2, MIN_WH, MAX_WH); this.soilR = Math.min(this.soilR, this.maxSoil(this.rows)); }
     if (which === 'sC') { this.soilC = Phaser.Math.Clamp(value, 1, this.maxSoil(this.cols)); }
     if (which === 'sR') { this.soilR = Phaser.Math.Clamp(value, 1, this.maxSoil(this.rows)); }
     this.regen();
     this.layout();
   }
   private setDim(which: 'W' | 'H' | 'sR' | 'sC', delta: number) {
-    const cur = which === 'W' ? this.cols : which === 'H' ? this.rows : which === 'sR' ? this.soilR : this.soilC;
+    const cur = which === 'W' ? this.cols - 2 : which === 'H' ? this.rows - 2 : which === 'sR' ? this.soilR : this.soilC;
     this.setDimTo(which, cur + delta);
   }
 
@@ -191,17 +196,14 @@ export class Editor extends Scene {
         if (terrain === 1) {
           g.fillStyle(SOIL); g.fillRect(x, y, S, S);
         } else {
-          g.fillStyle(GRASS_BD); g.fillRect(x, y, S, S);
+          g.fillStyle(GRASS_BD); g.fillRect(x, y, S, S);            // 1px dark gridline
           g.fillStyle(GRASS); g.fillRect(x + 1, y + 1, S - 2, S - 2);
-          const lp = Math.max(2, Math.floor(S / 4));
-          g.fillStyle(GRASS_LF);
-          g.fillRect(x + lp, y + lp, lp, lp);
-          g.fillRect(x + lp * 2, y + lp * 2, lp, lp);
-          // static stripe marks on ~10% of grass cells for visual texture
-          if ((r * 73 + c * 37) % 10 === 0) {
-            const mw = Math.max(1, Math.floor(S * 0.3));
-            g.fillRect(x + 2, y + Math.floor(S * 0.28), mw, 1);
-            g.fillRect(x + Math.floor(S * 0.45), y + Math.floor(S * 0.62), mw, 1);
+          // sparse, faint grass tuft on ~30% of cells (quiet board → sprites pop)
+          if ((r * 73 + c * 37) % 10 < 3 && S >= 10) {
+            const mw = Math.max(1, Math.floor(S * 0.22));
+            g.fillStyle(0x5AA03F);
+            g.fillRect(x + Math.floor(S * 0.32), y + Math.floor(S * 0.30), mw, 1);
+            g.fillRect(x + Math.floor(S * 0.44), y + Math.floor(S * 0.56), mw, 1);
           }
         }
         if (code === 7) {
@@ -209,8 +211,10 @@ export class Editor extends Scene {
           g.fillStyle(ROCK); g.fillRoundedRect(x + 3, y + 3, S - 7, S - 7, Math.max(2, S / 6));
         } else if (code >= 3) {
           const key = code === 3 ? `gard_${this.gardenerSkin}` : code === 4 ? this.foxKey(this.foxSkin) : code === 5 ? 'pumpkin' : 'corn';
-          const fill = code === 4 ? S : code === 3 ? S * 1.1 : S * 0.92;
-          this.entities.push(this.add.image(x + S / 2, y + S / 2, key).setDisplaySize(fill, fill).setDepth(1));
+          // Snoovatar (skin 0) has transparent padding, so give it a slightly bigger box to fill the cell.
+          const box = code === 3 && this.gardenerSkin === 0 ? S * 1.3 : S * 1.28;
+          const sz = (code === 4 || code === 3) ? fitSize(this, key, box) : { w: S * 0.92, h: S * 0.92 };
+          this.entities.push(this.add.image(x + S / 2, y + S / 2, key).setDisplaySize(sz.w, sz.h).setDepth(1));
         }
       }
     }
@@ -675,10 +679,11 @@ export class Editor extends Scene {
 
   // variant picker — overlays grid, transient; pick closes it
   private buildVariantFlyout() {
-    const list = this.tool === 'gardener'
-        ? GARDENER_SKINS.map((s, i) => ({ key: `gard_${i}`, name: i === 0 ? (this.username || s.name) : s.name, sel: this.gardenerSkin === i, on: () => { this.gardenerSkin = i; } }))
+    const list: { key: string; name: string; sel: boolean; on: () => void; locked?: boolean; lockLabel?: string }[] =
+      this.tool === 'gardener'
+        ? GARDENER_SKINS.map((s, i) => ({ key: `gard_${i}`, name: i === 0 ? (this.username || s.name) : s.name, sel: this.gardenerSkin === i, on: () => { this.gardenerSkin = i; }, locked: !this.unlockedGardener.includes(i), lockLabel: GARDENER_UNLOCKS[i]?.label }))
       : this.tool === 'fox'
-        ? FOX_SKINS.map((s, i) => ({ key: this.foxKey(i), name: s.name, sel: this.foxSkin === i, on: () => { this.foxSkin = i; } }))
+        ? FOX_SKINS.map((s, i) => ({ key: this.foxKey(i), name: s.name, sel: this.foxSkin === i, on: () => { this.foxSkin = i; }, locked: !this.unlockedFox.includes(i), lockLabel: FOX_UNLOCKS[i]?.label }))
       : VEGGIES.map((v, i) => ({ key: v.code === 5 ? 'pumpkin' : 'corn', name: v.name, sel: this.veggieIdx === i, on: () => { this.veggieIdx = i; } }));
     if (this.portrait) {
       // icon-only row above the bar
@@ -696,7 +701,10 @@ export class Editor extends Scene {
       let x = Math.max(PAD, (this.W - totalW) / 2);
       this.addRect(this.W / 2, y, this.W, h + 8, 0x0c0c0c);
       this.blockRects.push(new Phaser.Geom.Rectangle(0, y - (h + 8) / 2, this.W, h + 8));
-      for (const o of list) { this.optBtn(x, y, bw, 48, o.key, null, o.sel, pick(o.on)); x += bw + gap; }
+      for (const o of list) {
+        const cb = o.locked ? () => this.toast(o.lockLabel ? `🔒 ${o.lockLabel}` : 'Locked') : pick(o.on);
+        this.optBtn(x, y, bw, 48, o.key, null, o.sel, cb, o.locked); x += bw + gap;
+      }
     } else {
       // labelled column right of the rail
       const pick = (fn: () => void) => () => { fn(); this.variantOpen = false; this.layout(); };
@@ -706,7 +714,10 @@ export class Editor extends Scene {
       let y = Math.max(PAD + h / 2, (this.H - totalH) / 2 + h / 2);
       this.addRect(x + bw / 2, this.H / 2, bw + 12, this.H, 0x0c0c0c);
       this.blockRects.push(new Phaser.Geom.Rectangle(x - 6, 0, bw + 12, this.H));
-      for (const o of list) { this.optBtn(x, y, bw, h - 4, o.key, o.name, o.sel, pick(o.on)); y += h + gap; }
+      for (const o of list) {
+        const cb = o.locked ? () => this.toast(o.lockLabel ? `🔒 ${o.lockLabel}` : 'Locked') : pick(o.on);
+        this.optBtn(x, y, bw, h - 4, o.key, o.name, o.sel, cb, o.locked); y += h + gap;
+      }
     }
   }
 
@@ -752,17 +763,21 @@ export class Editor extends Scene {
   private toolSwatch(t: Tool): number | null {
     return t === 'grass' ? GRASS : t === 'soil' ? SOIL : t === 'rock' ? ROCK : null;
   }
-  private optBtn(x: number, cy: number, w: number, h: number, texKey: string, label: string | null, sel: boolean, onClick: () => void) {
-    this.base(x + w / 2, cy, w, h, sel, onClick);
+  private optBtn(x: number, cy: number, w: number, h: number, texKey: string, label: string | null, sel: boolean, onClick: () => void, locked = false) {
+    this.base(x + w / 2, cy, w, h, locked ? false : sel, onClick);
     const icx = label === null ? x + w / 2 : x + 22;
     const bg = this.add.rectangle(icx, cy, 34, 34, SOIL).setDepth(this.baseDepth + 1); this.uiObjs.push(bg);
     const img = this.add.image(icx, cy, texKey).setDisplaySize(32, 32).setDepth(this.baseDepth + 2); this.uiObjs.push(img);
-    if (label !== null) this.addText(x + 42, cy, label, 12, '#eeeeee', 0, 0.5);
+    if (locked) {
+      img.setAlpha(0.35);
+      const lk = this.add.text(icx, cy, '🔒', { fontSize: '18px' }).setOrigin(0.5).setDepth(this.baseDepth + 3); this.uiObjs.push(lk);
+    }
+    if (label !== null) this.addText(x + 42, cy, label, 12, locked ? '#888888' : '#eeeeee', 0, 0.5);
   }
 
   // W/H pill: [label][−][value(tap to type)][+]
   private sizePill(x: number, y: number, w: number, h: number, label: string, which: 'W' | 'H') {
-    const val = which === 'W' ? this.cols : this.rows;
+    const val = which === 'W' ? this.cols - 2 : this.rows - 2;
     const bg = this.add.rectangle(x + w / 2, y + h / 2, w, h, 0x232323).setStrokeStyle(1, 0x555555).setDepth(this.baseDepth); this.uiObjs.push(bg);
     const sb = 28; // stepper button size
     this.addText(x + 8, y + h / 2, label, 14, '#9fe09f', 0, 0.5);
@@ -785,7 +800,7 @@ export class Editor extends Scene {
   // tap-to-type dimension entry via DOM input overlay
   private editDim(which: 'W' | 'H', cx: number, cy: number) {
     if (this.dimInput) { this.dimInput.destroy(); this.dimInput = null; }
-    const cur = which === 'W' ? this.cols : this.rows;
+    const cur = which === 'W' ? this.cols - 2 : this.rows - 2;
     const el = this.add.dom(cx, cy, 'input',
       'width:56px;height:32px;font-size:18px;text-align:center;border:2px solid #ffd24a;border-radius:6px;background:#1c2018;color:#fff;outline:none;');
     const inp = el.node as HTMLInputElement;

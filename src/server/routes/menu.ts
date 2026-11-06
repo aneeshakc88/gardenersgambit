@@ -1,6 +1,6 @@
 import { Hono } from 'hono';
 import type { UiResponse } from '@devvit/web/shared';
-import { context, redis } from '@devvit/web/server';
+import { redis } from '@devvit/web/server';
 import { createPost } from '../core/post';
 
 export const menu = new Hono();

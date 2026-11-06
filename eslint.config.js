@@ -48,6 +48,7 @@ export default defineConfig([
       '@typescript-eslint/no-floating-promises': 'error',
       '@typescript-eslint/no-unused-vars': ['off'],
       'no-unused-vars': ['off'],
+      'no-undef': ['off'],
     },
     ignores: [
       '**/node_modules/**',

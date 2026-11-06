@@ -1,6 +1,7 @@
+import * as Phaser from 'phaser';
 import { Scene } from 'phaser';
 import type { InitResponse } from '../../shared/api';
-import { processTexture } from '../skins';
+import { processTexture, trimTexture } from '../skins';
 
 export class Preloader extends Scene {
   private initPromise: Promise<InitResponse | null> | null = null;
@@ -37,13 +38,8 @@ export class Preloader extends Scene {
     this.load.image('fox',      'fox1.png');
     this.load.image('fox_raw_1', 'fox2.png');
     this.load.image('fox_raw_2', 'fox3.png');
-    this.load.image('fox_raw_3', 'fox4.png');
-    this.load.image('fox_raw_4', 'fox5.png');
-    this.load.image('gardener', 'gardener_transparent.png');
     this.load.image('gard_raw_1', 'mia.png');
     this.load.image('gard_raw_2', 'sam.png');
-    this.load.image('gard_raw_3', 'trump_gardener.png');
-    this.load.image('gard_raw_4', 'putin_gardener.png');
   }
 
   async create() {
@@ -63,9 +59,12 @@ export class Preloader extends Scene {
     processTexture(this, 'corn', 'corn');
     processTexture(this, 'pumpkin', 'pumpkin');
 
+    // Fox skin 0 (fox1.png): crop transparent padding at native res so it fills the cell, no quality loss
+    trimTexture(this, 'fox');
+
     // Load snoovatar (or default snoo) as gard_0 for the username gardener skin
+    const snooUrl = data?.snoovatarUrl ?? '/snoo.png';
     if (!this.textures.exists('gard_0')) {
-      const snooUrl = data?.snoovatarUrl ?? '/snoo.png';
       await new Promise<void>(r => {
         this.load.image('gard_0', snooUrl);
         this.load.once('complete', () => r());
@@ -73,9 +72,19 @@ export class Preloader extends Scene {
         this.load.start();
       });
     }
+    // Snoovatar: crop transparent padding at native res (no-op for a cross-origin CDN snoovatar — tainted
+    // canvas). The global pixelArt config draws every texture with nearest-neighbour, which turns this
+    // smooth photo blocky; give just this texture LINEAR filtering so the Canvas renderer smooth-scales
+    // it (SetTransform sets imageSmoothingEnabled from the frame's scaleMode) — crisp like the splash.
+    trimTexture(this, 'gard_0');
+    if (this.textures.exists('gard_0')) this.textures.get('gard_0').setFilter(Phaser.Textures.FilterMode.LINEAR);
 
     if (intent === 'create') {
-      this.scene.start('Editor', { username: data?.username ?? '' });
+      this.scene.start('Editor', {
+        username: data?.username ?? '',
+        unlockedGardener: data?.unlockedGardener,
+        unlockedFox: data?.unlockedFox,
+      });
       return;
     }
 
